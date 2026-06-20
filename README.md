@@ -51,24 +51,12 @@ The packaged app is created in the build output folder defined by the spec or yo
 
 ## Hardware
 
-IR Receiver 38kHz — TSOP38438
-https://www.jaycar.co.nz/5mm-infrared-receiver/p/ZD1952
-
-IR LED (High Power 940nm) — TSAL6400
-https://www.jaycar.co.nz/5mm-infrared-transmitting-led/p/ZD1945
-
-Arduino Uno R4 WiFi — ABX00087
-https://www.jaycar.co.nz/arduino-uno-rev4-minima-development-board/p/XC9210
-
-Resistor 1kΩ ¼W — standard metal film 0.25W
-https://www.jaycar.co.nz/1k-ohm-0-5-watt-metal-film-resistors-pack-of-8/p/RR0572
-
-Resistor 100Ω ¼W — standard metal film 0.25W
-https://www.jaycar.co.nz/100-ohm-0-5-watt-metal-film-resistors-pack-of-8/p/RR0548
-
-Capacitor 100nF — ceramic 100nF 50V
-https://www.jaycar.co.nz/100nf-50vdc-ceramic-capacitors-pack-of-2/p/RC5360
-
+- `IR Receiver 38kHz — TSOP38438` - [LINK](https://www.jaycar.co.nz/5mm-infrared-receiver/p/ZD1952)
+- `IR LED (High Power 940nm) — TSAL6400` - [LINK](https://www.jaycar.co.nz/5mm-infrared-transmitting-led/p/ZD1945)
+- `Arduino Uno R4 WiFi — ABX00087` - [LINK](https://www.jaycar.co.nz/arduino-uno-rev4-minima-development-board/p/XC9210)
+- `Resistor 1kΩ ¼W — standard metal film 0.25W` - [LINK](https://www.jaycar.co.nz/1k-ohm-0-5-watt-metal-film-resistors-pack-of-8/p/RR0572)
+- `Resistor 100Ω ¼W — standard metal film 0.25W` - [LINK](https://www.jaycar.co.nz/100-ohm-0-5-watt-metal-film-resistors-pack-of-8/p/RR0548)
+- `Capacitor 100nF — ceramic 100nF 50V` - [LINK](https://www.jaycar.co.nz/100nf-50vdc-ceramic-capacitors-pack-of-2/p/RC5360)
 
 
 ## Notes
