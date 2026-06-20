@@ -36,13 +36,6 @@ python -m PyInstaller --noconfirm Remote.spec
 
 The packaged app is created in the build output folder defined by the spec or your build command.
 
-## Versioning
-
-The app version starts at `v2.0` and increments with each new build.
-
-- The current version is stored in `conf/app_version.txt`
-- The version is shown in the About dialog
-- Rebuilding with `Remote.spec` bumps the version automatically
 
 ## Project Structure
 
@@ -55,7 +48,31 @@ The app version starts at `v2.0` and increments with each new build.
 - `images/` - UI assets and device artwork
 - `conf/` - application settings and generated version file
 
+
+## Hardware
+
+IR Receiver 38kHz — TSOP38438
+https://www.jaycar.co.nz/5mm-infrared-receiver/p/ZD1952
+
+IR LED (High Power 940nm) — TSAL6400
+https://www.jaycar.co.nz/5mm-infrared-transmitting-led/p/ZD1945
+
+Arduino Uno R4 WiFi — ABX00087
+https://www.jaycar.co.nz/arduino-uno-rev4-minima-development-board/p/XC9210
+
+Resistor 1kΩ ¼W — standard metal film 0.25W
+https://www.jaycar.co.nz/1k-ohm-0-5-watt-metal-film-resistors-pack-of-8/p/RR0572
+
+Resistor 100Ω ¼W — standard metal film 0.25W
+https://www.jaycar.co.nz/100-ohm-0-5-watt-metal-film-resistors-pack-of-8/p/RR0548
+
+Capacitor 100nF — ceramic 100nF 50V
+https://www.jaycar.co.nz/100nf-50vdc-ceramic-capacitors-pack-of-2/p/RC5360
+
+
+
 ## Notes
 
 - The app is designed for Arduino-compatible hardware, not only a specific model.
 - This repository is ready to build locally or package into a Windows executable.
+
