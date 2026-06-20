@@ -12,5 +12,6 @@ dist_build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.vscode/
 
 conf/app_version.txt
