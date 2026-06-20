@@ -59,4 +59,3 @@ The app version starts at `v2.0` and increments with each new build.
 
 - The app is designed for Arduino-compatible hardware, not only a specific model.
 - This repository is ready to build locally or package into a Windows executable.
-- If you want screenshots added to the repo page later, I can wire those into this README once you have a capture to use.
