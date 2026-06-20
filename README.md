@@ -1,53 +1,50 @@
 # IR Remote Sender
 
-A Windows desktop app for learning, storing, and sending IR commands through an Arduino-compatible device connected over USB serial.
+[![Platform](https://img.shields.io/badge/platform-Windows-blue)](https://github.com/fluxnz/IR_RemoteSender)
+[![Python](https://img.shields.io/badge/python-3.11%2B-green)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-See%20repo-lightgrey)](https://github.com/fluxnz/IR_RemoteSender)
 
-## Features
+A Windows desktop app for learning, storing, and sending IR commands through an Arduino-compatible device over USB serial.
 
-- Learn IR codes from a remote and store them per device action
-- Send saved commands from a desktop UI
-- Support for custom device profiles and built-in templates
-- Global hotkeys for quick actions, even while the app is minimized
-- System tray support with restore / quit actions
-- Overlay tuning for image-based remotes
-- Packaged Windows build via PyInstaller
+## What It Does
 
-## Requirements
+- Learn IR codes from a remote and save them per action
+- Send stored commands from a simple desktop interface
+- Manage built-in and custom device profiles
+- Use global hotkeys even while the app is minimized
+- Keep the app in the system tray with quick restore/quit actions
+- Tune image-based overlays for supported remotes
 
-- Windows
-- Python 3.11+
-- An Arduino-compatible device running the included IR Learn + Replay firmware
-- IR receiver and IR LED hardware wired to the Arduino
+## Quick Start
 
-## Running From Source
-
-1. Open a terminal in the project folder.
-2. Activate the virtual environment if needed.
-3. Run the app entry point:
+1. Install Python 3.11 or later.
+2. Connect an Arduino-compatible board running the included IR Learn + Replay firmware.
+3. Wire the IR receiver and IR LED hardware to the board.
+4. Run the app:
 
 ```powershell
 python Remote.py
 ```
 
-## Building the App
+## Build For Windows
 
-The project includes a PyInstaller spec file for creating a distributable Windows app.
+Use PyInstaller with the provided spec file:
 
 ```powershell
 python -m PyInstaller --noconfirm Remote.spec
 ```
 
-The packaged app will be created in the `dist` output folder defined by your build command or spec file.
+The packaged app is created in the build output folder defined by the spec or your build command.
 
 ## Versioning
 
 The app version starts at `v2.0` and increments with each new build.
 
-- The current build version is stored in `conf/app_version.txt`
-- The version is shown in the About dialog inside the app
-- Rebuilding with `Remote.spec` bumps the version forward automatically
+- The current version is stored in `conf/app_version.txt`
+- The version is shown in the About dialog
+- Rebuilding with `Remote.spec` bumps the version automatically
 
-## Project Layout
+## Project Structure
 
 - `Remote.py` - app entry point
 - `remote_app.py` - main UI and application logic
@@ -55,10 +52,11 @@ The app version starts at `v2.0` and increments with each new build.
 - `remote_config.py` - config persistence
 - `remote_devices.py` - built-in device definitions
 - `sketch/IR_remote/IR_remote.ino` - Arduino firmware
-- `images/` - UI assets and device images
+- `images/` - UI assets and device artwork
 - `conf/` - application settings and generated version file
 
 ## Notes
 
-- The app is designed to work with Arduino-compatible boards, not only a specific model.
-- If you want the latest packaged build, use the app from the GitHub repository release or rebuild it locally with PyInstaller.
+- The app is designed for Arduino-compatible hardware, not only a specific model.
+- This repository is ready to build locally or package into a Windows executable.
+- If you want screenshots added to the repo page later, I can wire those into this README once you have a capture to use.
