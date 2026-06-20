@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+build/
+dist/
+build_build/
+dist_build/
+
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+conf/app_version.txt
