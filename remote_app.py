@@ -1234,7 +1234,11 @@ class IRRemoteApp:
         ttk.Button(controls, text="Add Row", command=lambda: add_row("", "", "")).pack(side="left")
         ttk.Button(controls, text="Save", command=save_commands).pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Close", command=top.destroy).pack(side="right")
-        ttk.Label(controls, text="Use Learn to capture HEX and Hotkey to assign shortcuts. To alternate two actions on one hotkey, set each row's Toggle With to the other action name.", foreground="#4b5563").pack(side="left", padx=(12, 0))
+        help_text = (
+            "Use Learn to capture HEX and Hotkey to assign shortcuts. "
+            "To alternate two actions on one hotkey, set each row's Toggle With to the other action name."
+        )
+        ttk.Button(controls, text="?", width=3, command=lambda: messagebox.showinfo("Device Commands Help", help_text)).pack(side="left", padx=(12, 0))
         self._center_window(top, self.root)
 
     def open_settings_dialog(self):
