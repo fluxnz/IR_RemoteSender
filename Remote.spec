@@ -37,7 +37,7 @@ a = Analysis(
         ('images', 'images'),
         ('conf', 'conf'),
     ],
-    hiddenimports=['pystray', 'PIL', 'serial', 'serial.tools', 'serial.tools.list_ports'],
+    hiddenimports=['pystray', 'PIL', 'serial', 'serial.tools', 'serial.tools.list_ports', 'pynput', 'pynput.keyboard'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

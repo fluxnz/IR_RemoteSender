@@ -3,8 +3,6 @@ import shutil
 import json
 import sys
 import threading
-import ctypes
-from ctypes import wintypes
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -24,29 +22,9 @@ except Exception:
     pystray = None
 
 try:
-    USER32 = ctypes.windll.user32 if sys.platform == "win32" else None
+    from pynput import keyboard as pynput_keyboard  # type: ignore[import-not-found]
 except Exception:
-    USER32 = None
-
-
-WM_HOTKEY = 0x0312
-PM_REMOVE = 0x0001
-MOD_ALT = 0x0001
-MOD_CONTROL = 0x0002
-MOD_SHIFT = 0x0004
-MOD_WIN = 0x0008
-
-
-class MSG(ctypes.Structure):
-    _fields_ = [
-        ("hwnd", wintypes.HWND),
-        ("message", wintypes.UINT),
-        ("wParam", wintypes.WPARAM),
-        ("lParam", wintypes.LPARAM),
-        ("time", wintypes.DWORD),
-        ("pt_x", wintypes.LONG),
-        ("pt_y", wintypes.LONG),
-    ]
+    pynput_keyboard = None
 
 
 PROGRAM_DIR = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
@@ -78,10 +56,8 @@ class IRRemoteApp:
         self.device_skin_vars: dict[str, tk.StringVar] = {}
         self.bindings: dict[tuple[str, str], str] = {}
         self.global_hotkey_handles: dict[tuple[str, str], object] = {}
+        self.global_hotkey_listener = None
         self.hotkey_toggle_state: dict[str, int] = {}
-        self.windows_hotkey_actions: dict[int, tuple[str, tuple[tuple[str, str], ...]]] = {}
-        self.next_hotkey_id = 1
-        self.hotkey_poll_active = False
         self.device_containers: dict[str, tk.Frame] = {}
         self.last_selected_device: str | None = None
 
@@ -1565,10 +1541,17 @@ class IRRemoteApp:
         self.bindings.clear()
         self.hotkey_toggle_state.clear()
 
-        # Remove existing Windows hotkey registrations.
-        self._unregister_windows_hotkeys()
+        # Remove existing global bindings.
+        if self.global_hotkey_listener is not None:
+            try:
+                self.global_hotkey_listener.stop()
+            except Exception:
+                pass
+            self.global_hotkey_listener = None
+        self.global_hotkey_handles.clear()
 
         global_groups: dict[str, list[tuple[int, str, str, str]]] = {}
+        local_groups: dict[str, list[tuple[int, str, str, str]]] = {}
         action_sequence = 0
 
         for device_name in self.enabled_devices:
@@ -1580,147 +1563,48 @@ class IRRemoteApp:
                 if not raw:
                     continue
 
-                global_sequence = self._normalize_global_hotkey(raw)
+                global_sequence = self._normalize_pynput_hotkey(raw)
                 sequence = self._normalize_sequence(raw)
                 toggle_partner = self.config_manager.get_hotkey_toggle_partner(device_name, action_name)
 
                 if global_sequence:
                     global_groups.setdefault(global_sequence, []).append((action_sequence, device_name, action_name, toggle_partner))
+                if sequence:
+                    local_groups.setdefault(sequence, []).append((action_sequence, device_name, action_name, toggle_partner))
 
                 action_sequence += 1
 
-        for global_sequence, action_group in global_groups.items():
-            group_key = f"global:{global_sequence}"
-            ordered_actions = self._build_hotkey_dispatch_group(action_group)
-            if not ordered_actions:
-                continue
+        globally_bound_actions: set[tuple[str, str]] = set()
 
-            parsed = self._parse_windows_hotkey(global_sequence)
-            if not parsed:
-                continue
-            modifiers, vk = parsed
+        if pynput_keyboard is not None and global_groups:
+            callbacks: dict[str, object] = {}
+            for global_sequence, action_group in global_groups.items():
+                group_key = f"global:{global_sequence}"
+                ordered_actions = self._build_hotkey_dispatch_group(action_group)
+                group_tuple = tuple(ordered_actions)
+                callbacks[global_sequence] = (
+                    lambda gk=group_key, grp=group_tuple: self.root.after(0, lambda: self._dispatch_hotkey_group(gk, grp))
+                )
+                for _idx, d, a, _partner in action_group:
+                    globally_bound_actions.add((d, a))
 
-            hotkey_id = self.next_hotkey_id
-            self.next_hotkey_id += 1
-            if self._register_windows_hotkey(hotkey_id, modifiers, vk):
-                self.windows_hotkey_actions[hotkey_id] = (group_key, tuple(ordered_actions))
-
-        self._ensure_hotkey_polling()
-
-    def _register_windows_hotkey(self, hotkey_id: int, modifiers: int, vk: int) -> bool:
-        if USER32 is None:
-            return False
-        try:
-            return bool(USER32.RegisterHotKey(None, hotkey_id, modifiers, vk))
-        except Exception:
-            return False
-
-    def _unregister_windows_hotkeys(self):
-        if USER32 is not None:
-            for hotkey_id in list(self.windows_hotkey_actions.keys()):
-                try:
-                    USER32.UnregisterHotKey(None, hotkey_id)
-                except Exception:
-                    pass
-        self.windows_hotkey_actions.clear()
-        self.next_hotkey_id = 1
-
-    def _ensure_hotkey_polling(self):
-        if self.hotkey_poll_active:
-            return
-        self.hotkey_poll_active = True
-        self.root.after(30, self._poll_hotkey_messages)
-
-    def _poll_hotkey_messages(self):
-        if USER32 is not None:
-            msg = MSG()
             try:
-                while USER32.PeekMessageW(ctypes.byref(msg), None, WM_HOTKEY, WM_HOTKEY, PM_REMOVE):
-                    hotkey_id = int(msg.wParam)
-                    data = self.windows_hotkey_actions.get(hotkey_id)
-                    if data:
-                        group_key, group_tuple = data
-                        self._dispatch_hotkey_group(group_key, group_tuple)
+                self.global_hotkey_listener = pynput_keyboard.GlobalHotKeys(callbacks)
+                self.global_hotkey_listener.start()
             except Exception:
-                pass
+                self.global_hotkey_listener = None
+                globally_bound_actions.clear()
 
-        if self.hotkey_poll_active:
-            self.root.after(30, self._poll_hotkey_messages)
+        for sequence, action_group in local_groups.items():
+            ordered_actions = self._build_hotkey_dispatch_group(action_group)
+            filtered_group = [action_ref for action_ref in ordered_actions if action_ref not in globally_bound_actions]
+            if not filtered_group:
+                continue
 
-    def _parse_windows_hotkey(self, sequence: str) -> tuple[int, int] | None:
-        raw = (sequence or "").strip().lower()
-        if not raw:
-            return None
-
-        parts = [part.strip() for part in raw.split("+") if part.strip()]
-        if not parts:
-            return None
-
-        modifier_map = {
-            "ctrl": MOD_CONTROL,
-            "control": MOD_CONTROL,
-            "alt": MOD_ALT,
-            "shift": MOD_SHIFT,
-            "win": MOD_WIN,
-            "windows": MOD_WIN,
-            "cmd": MOD_WIN,
-            "command": MOD_WIN,
-        }
-
-        modifiers = 0
-        key_token = None
-
-        for token in parts:
-            if token in modifier_map:
-                modifiers |= modifier_map[token]
-            else:
-                key_token = token
-
-        if not key_token:
-            return None
-
-        vk = self._windows_vk_for_token(key_token)
-        if vk is None:
-            return None
-        return modifiers, vk
-
-    def _windows_vk_for_token(self, token: str) -> int | None:
-        tok = (token or "").strip().lower()
-        if not tok:
-            return None
-
-        if len(tok) == 1 and tok.isalpha():
-            return ord(tok.upper())
-        if len(tok) == 1 and tok.isdigit():
-            return ord(tok)
-
-        if tok.startswith("f") and tok[1:].isdigit():
-            fn = int(tok[1:])
-            if 1 <= fn <= 24:
-                return 0x70 + (fn - 1)
-
-        mapping = {
-            "enter": 0x0D,
-            "return": 0x0D,
-            "esc": 0x1B,
-            "escape": 0x1B,
-            "space": 0x20,
-            "tab": 0x09,
-            "backspace": 0x08,
-            "delete": 0x2E,
-            "insert": 0x2D,
-            "home": 0x24,
-            "end": 0x23,
-            "page up": 0x21,
-            "pageup": 0x21,
-            "page down": 0x22,
-            "pagedown": 0x22,
-            "left": 0x25,
-            "up": 0x26,
-            "right": 0x27,
-            "down": 0x28,
-        }
-        return mapping.get(tok)
+            group_key = f"local:{sequence}"
+            group_tuple = tuple(filtered_group)
+            self.root.bind(sequence, lambda _event, gk=group_key, grp=group_tuple: self._dispatch_hotkey_group(gk, grp))
+            self.bindings[("local", sequence)] = sequence
 
     def _build_hotkey_dispatch_group(self, action_group: list[tuple[int, str, str, str]]) -> list[tuple[str, str]]:
         ordered = sorted(action_group, key=lambda item: item[0])
@@ -1758,7 +1642,7 @@ class IRRemoteApp:
         self.hotkey_toggle_state[group_key] = (idx + 1) % len(action_group)
         self.send_command(device_name, action_name)
 
-    def _normalize_global_hotkey(self, sequence: str) -> str | None:
+    def _normalize_pynput_hotkey(self, sequence: str) -> str | None:
         raw = (sequence or "").strip()
         if not raw:
             return None
@@ -1772,34 +1656,47 @@ class IRRemoteApp:
             "control": "ctrl",
             "alt": "alt",
             "shift": "shift",
-            "cmd": "windows",
-            "command": "windows",
-            "windows": "windows",
-            "win": "windows",
+            "cmd": "cmd",
+            "command": "cmd",
+            "windows": "cmd",
+            "win": "cmd",
             "enter": "enter",
             "return": "enter",
             "esc": "esc",
             "escape": "esc",
             "space": "space",
-            "pgup": "page up",
-            "pageup": "page up",
-            "pgdn": "page down",
-            "pagedown": "page down",
+            "pgup": "page_up",
+            "pageup": "page_up",
+            "pgdn": "page_down",
+            "pagedown": "page_down",
             "left": "left",
             "right": "right",
             "up": "up",
             "down": "down",
         }
 
-        normalized: list[str] = []
+        modifier_tokens = {"ctrl", "alt", "shift", "cmd"}
+        modifiers: list[str] = []
+        key_token: str | None = None
+
         for part in parts:
             lower = part.lower()
             token = mapping.get(lower, lower)
-            if len(token) == 1 and token.isalpha():
-                token = token.lower()
-            normalized.append(token)
+            if token in modifier_tokens:
+                wrapped = f"<{token}>"
+                if wrapped not in modifiers:
+                    modifiers.append(wrapped)
+                continue
 
-        return "+".join(normalized)
+            if len(token) == 1 and token.isalnum():
+                key_token = token.lower()
+            else:
+                key_token = f"<{token}>"
+
+        if not key_token:
+            return None
+
+        return "+".join([*modifiers, key_token])
 
     def _normalize_sequence(self, sequence: str) -> str | None:
         raw = (sequence or "").strip()
@@ -2036,8 +1933,13 @@ class IRRemoteApp:
         self.quit_app()
 
     def quit_app(self):
-        self.hotkey_poll_active = False
-        self._unregister_windows_hotkeys()
+        if self.global_hotkey_listener is not None:
+            try:
+                self.global_hotkey_listener.stop()
+            except Exception:
+                pass
+            self.global_hotkey_listener = None
+        self.global_hotkey_handles.clear()
         self.config_manager.set_show_overlays(self.show_overlays_var.get())
         self.save_hotkeys()
         self.config_manager.set_enabled_devices(self.enabled_devices)
