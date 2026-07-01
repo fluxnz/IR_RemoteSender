@@ -2,6 +2,7 @@ from pathlib import Path
 import shutil
 import json
 import sys
+import math
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -274,11 +275,21 @@ class IRRemoteApp:
         if hasattr(self, "settings_menu") and self.settings_menu is not None and hasattr(self, "overlay_menu_index"):
             self.settings_menu.entryconfig(self.overlay_menu_index, label=self._overlay_toggle_label())
 
+    def _save_config_nonfatal(self, reason: str = "") -> bool:
+        """Save config without breaking UI callbacks when disk writes fail."""
+        try:
+            self.config_manager.save()
+            return True
+        except Exception as exc:
+            context = f" ({reason})" if reason else ""
+            self.status_var.set(f"Config save failed{context}: {exc}")
+            return False
+
     def on_overlay_toggle_from_main(self):
         value = self.overlay_radio_var.get() == "on"
         self.show_overlays_var.set(value)
         self.config_manager.set_show_overlays(value)
-        self.config_manager.save()
+        self._save_config_nonfatal("overlay toggle")
         self._sync_overlay_menu_label()
         self.rebuild_device_tabs()
 
@@ -286,7 +297,7 @@ class IRRemoteApp:
         value = bool(self.show_overlays_var.get())
         self.overlay_radio_var.set("on" if value else "off")
         self.config_manager.set_show_overlays(value)
-        self.config_manager.save()
+        self._save_config_nonfatal("overlay toggle")
         self._sync_overlay_menu_label()
         self.rebuild_device_tabs()
 
@@ -296,7 +307,7 @@ class IRRemoteApp:
         self.show_overlays_var.set(not current_state)
         self.overlay_radio_var.set("off" if current_state else "on")
         self.config_manager.set_show_overlays(not current_state)
-        self.config_manager.save()
+        self._save_config_nonfatal("overlay toggle")
         self._sync_overlay_menu_label()
         self.rebuild_device_tabs()
 
@@ -460,7 +471,20 @@ class IRRemoteApp:
             canvas.create_image(cw // 2, ch // 2, anchor="center", image=photo)
 
             if self.show_overlays_var.get():
-                for action_name, (x0, y0, x1, y1) in regions.items():
+                for action_name, region in regions.items():
+                    try:
+                        x0, y0, x1, y1 = [float(v) for v in region]
+                    except Exception:
+                        continue
+
+                    if not all(math.isfinite(v) for v in (x0, y0, x1, y1)):
+                        continue
+
+                    x0 = max(0.0, min(1.0, x0))
+                    y0 = max(0.0, min(1.0, y0))
+                    x1 = max(0.0, min(1.0, x1))
+                    y1 = max(0.0, min(1.0, y1))
+
                     rx0 = ox + int(x0 * nw)
                     ry0 = oy + int(y0 * nh)
                     rx1 = ox + int(x1 * nw)
@@ -480,7 +504,15 @@ class IRRemoteApp:
 
             xp = x / iw
             yp = y / ih
-            for action_name, (x0, y0, x1, y1) in regions.items():
+            for action_name, region in regions.items():
+                try:
+                    x0, y0, x1, y1 = [float(v) for v in region]
+                except Exception:
+                    continue
+
+                if not all(math.isfinite(v) for v in (x0, y0, x1, y1)):
+                    continue
+
                 if x0 <= xp <= x1 and y0 <= yp <= y1 and action_name in device.commands:
                     rect = canvas.create_rectangle(
                         ox + int(x0 * iw),
