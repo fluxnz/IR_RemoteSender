@@ -24,7 +24,7 @@ def _bump_build_version(version_file: Path) -> str:
     return next_version
 
 
-_ROOT = Path(__file__).resolve().parent
+_ROOT = Path.cwd()
 _VERSION_FILE = _ROOT / "conf" / "app_version.txt"
 _BUILT_VERSION = _bump_build_version(_VERSION_FILE)
 print(f"Building IR Remote Sender {_BUILT_VERSION}")
