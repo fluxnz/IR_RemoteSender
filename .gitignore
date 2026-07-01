@@ -13,5 +13,4 @@ dist_build/
 .mypy_cache/
 .ruff_cache/
 .vscode/
-
 conf/app_version.txt

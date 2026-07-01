@@ -56,6 +56,7 @@ class IRRemoteApp:
         self.device_skin_vars: dict[str, tk.StringVar] = {}
         self.bindings: dict[tuple[str, str], str] = {}
         self.global_hotkey_handles: dict[tuple[str, str], object] = {}
+        self.hotkey_toggle_state: dict[str, int] = {}
         self.device_containers: dict[str, tk.Frame] = {}
         self.last_selected_device: str | None = None
 
@@ -1196,7 +1197,7 @@ class IRRemoteApp:
         ttk.Button(controls, text="Add Row", command=lambda: add_row("", "", "")).pack(side="left")
         ttk.Button(controls, text="Save", command=save_commands).pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Close", command=top.destroy).pack(side="right")
-        ttk.Label(controls, text="Use Learn to capture HEX and Hotkey to assign a shortcut for each action.", foreground="#4b5563").pack(side="left", padx=(12, 0))
+        ttk.Label(controls, text="Use Learn to capture HEX and Hotkey to assign shortcuts. Use the same hotkey on multiple actions to alternate each key press.", foreground="#4b5563").pack(side="left", padx=(12, 0))
         self._center_window(top, self.root)
 
     def open_settings_dialog(self):
@@ -1498,9 +1499,10 @@ class IRRemoteApp:
 
     def apply_hotkeys(self):
         # Remove existing app-scoped bindings.
-        for sequence in list(self.bindings.values()):
+        for sequence in set(self.bindings.values()):
             self.root.unbind(sequence)
         self.bindings.clear()
+        self.hotkey_toggle_state.clear()
 
         # Remove existing global bindings.
         if global_keyboard is not None:
@@ -1511,6 +1513,9 @@ class IRRemoteApp:
                     pass
             self.global_hotkey_handles.clear()
 
+        global_groups: dict[str, list[tuple[str, str]]] = {}
+        local_groups: dict[str, list[tuple[str, str]]] = {}
+
         for device_name in self.enabled_devices:
             device = self.device_library.get(device_name)
             if not device:
@@ -1520,26 +1525,55 @@ class IRRemoteApp:
                 if not raw:
                     continue
 
-                if global_keyboard is not None:
-                    global_sequence = self._normalize_global_hotkey(raw)
-                    if global_sequence:
-                        try:
-                            handle = global_keyboard.add_hotkey(
-                                global_sequence,
-                                lambda d=device_name, a=action_name: self.root.after(0, lambda: self.send_command(d, a)),
-                                suppress=False,
-                                trigger_on_release=False,
-                            )
-                            self.global_hotkey_handles[(device_name, action_name)] = handle
-                            continue
-                        except Exception:
-                            # Fall back to app-scoped binding below.
-                            pass
-
+                global_sequence = self._normalize_global_hotkey(raw)
                 sequence = self._normalize_sequence(raw)
+
+                if global_sequence:
+                    global_groups.setdefault(global_sequence, []).append((device_name, action_name))
                 if sequence:
-                    self.root.bind(sequence, lambda _event, d=device_name, a=action_name: self.send_command(d, a))
-                    self.bindings[(device_name, action_name)] = sequence
+                    local_groups.setdefault(sequence, []).append((device_name, action_name))
+
+        globally_bound_actions: set[tuple[str, str]] = set()
+
+        if global_keyboard is not None:
+            for global_sequence, action_group in global_groups.items():
+                try:
+                    group_key = f"global:{global_sequence}"
+                    group_tuple = tuple(action_group)
+                    handle = global_keyboard.add_hotkey(
+                        global_sequence,
+                        lambda gk=group_key, grp=group_tuple: self.root.after(0, lambda: self._dispatch_hotkey_group(gk, grp)),
+                        suppress=False,
+                        trigger_on_release=False,
+                    )
+                    self.global_hotkey_handles[("global", global_sequence)] = handle
+                    for action_ref in action_group:
+                        globally_bound_actions.add(action_ref)
+                except Exception:
+                    # Fall back to app-scoped binding for this group.
+                    pass
+
+        for sequence, action_group in local_groups.items():
+            filtered_group = [action_ref for action_ref in action_group if action_ref not in globally_bound_actions]
+            if not filtered_group:
+                continue
+
+            group_key = f"local:{sequence}"
+            group_tuple = tuple(filtered_group)
+            self.root.bind(sequence, lambda _event, gk=group_key, grp=group_tuple: self._dispatch_hotkey_group(gk, grp))
+            self.bindings[("local", sequence)] = sequence
+
+    def _dispatch_hotkey_group(self, group_key: str, action_group: tuple[tuple[str, str], ...]):
+        if not action_group:
+            return
+
+        idx = self.hotkey_toggle_state.get(group_key, 0)
+        if idx >= len(action_group):
+            idx = 0
+
+        device_name, action_name = action_group[idx]
+        self.hotkey_toggle_state[group_key] = (idx + 1) % len(action_group)
+        self.send_command(device_name, action_name)
 
     def _normalize_global_hotkey(self, sequence: str) -> str | None:
         raw = (sequence or "").strip()
