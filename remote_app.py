@@ -939,6 +939,7 @@ class IRRemoteApp:
         ttk.Label(header, text="Action", width=18).pack(side="left")
         ttk.Label(header, text="HEX", width=48).pack(side="left", padx=(6, 0))
         ttk.Label(header, text="Hotkey", width=16).pack(side="left", padx=(6, 0))
+        ttk.Label(header, text="Toggle With", width=16).pack(side="left", padx=(6, 0))
 
         rows_view = ttk.Frame(commands)
         rows_view.pack(fill="both", expand=True, pady=(6, 0))
@@ -978,24 +979,26 @@ class IRRemoteApp:
         rows_container.bind("<Configure>", _sync_rows_scrollregion)
         rows_canvas.bind("<Configure>", _sync_rows_width)
 
-        action_rows: list[tuple[tk.StringVar, tk.StringVar, tk.StringVar, ttk.Frame]] = []
+        action_rows: list[tuple[tk.StringVar, tk.StringVar, tk.StringVar, tk.StringVar, ttk.Frame]] = []
 
         def clear_rows():
-            for _action, _hex, _hotkey, frame in list(action_rows):
+            for _action, _hex, _hotkey, _toggle_with, frame in list(action_rows):
                 frame.destroy()
             action_rows.clear()
 
-        def add_row(action_text: str = "", hex_text: str = "", hotkey_text: str = ""):
+        def add_row(action_text: str = "", hex_text: str = "", hotkey_text: str = "", toggle_with: str = ""):
             row_frame = ttk.Frame(rows_container)
             row_frame.pack(fill="x", pady=(0, 4))
 
             action_var = tk.StringVar(value=action_text)
             hex_var = tk.StringVar(value=hex_text)
             hotkey_var = tk.StringVar(value=hotkey_text)
+            toggle_with_var = tk.StringVar(value=(toggle_with or "").strip())
 
             ttk.Entry(row_frame, textvariable=action_var, width=18).pack(side="left")
             ttk.Entry(row_frame, textvariable=hex_var).pack(side="left", padx=(6, 6), fill="x", expand=True)
             ttk.Entry(row_frame, textvariable=hotkey_var, width=14, state="readonly").pack(side="left")
+            ttk.Entry(row_frame, textvariable=toggle_with_var, width=14).pack(side="left", padx=(6, 0))
 
             def learn_row():
                 action_name = (action_var.get() or "").strip() or "(unnamed action)"
@@ -1113,12 +1116,12 @@ class IRRemoteApp:
             def remove_row():
                 row_frame.destroy()
                 try:
-                    action_rows.remove((action_var, hex_var, hotkey_var, row_frame))
+                    action_rows.remove((action_var, hex_var, hotkey_var, toggle_with_var, row_frame))
                 except ValueError:
                     pass
 
             ttk.Button(row_frame, text="Remove", command=remove_row).pack(side="left")
-            action_rows.append((action_var, hex_var, hotkey_var, row_frame))
+            action_rows.append((action_var, hex_var, hotkey_var, toggle_with_var, row_frame))
 
         def load_device(name: str):
             device = self.device_library[name]
@@ -1137,9 +1140,14 @@ class IRRemoteApp:
 
             clear_rows()
             for action_name, command_hex in device.commands.items():
-                add_row(action_name, command_hex, self.config_manager.get_hotkey(name, action_name))
+                add_row(
+                    action_name,
+                    command_hex,
+                    self.config_manager.get_hotkey(name, action_name),
+                    self.config_manager.get_hotkey_toggle_partner(name, action_name),
+                )
             if not device.commands:
-                add_row("Power", "0000 ...", "")
+                add_row("Power", "0000 ...", "", "")
 
         def save_commands():
             device_name = selected_device.get().strip()
@@ -1147,17 +1155,41 @@ class IRRemoteApp:
                 return
 
             commands: dict[str, str] = {}
-            for action_var, hex_var, hotkey_var, _frame in list(action_rows):
+            toggle_map: dict[str, str] = {}
+
+            for action_var, hex_var, hotkey_var, toggle_with_var, _frame in list(action_rows):
                 action_name = (action_var.get() or "").strip()
                 command_hex = (hex_var.get() or "").strip()
                 hotkey_text = (hotkey_var.get() or "").strip()
+                toggle_with_text = (toggle_with_var.get() or "").strip()
                 if not action_name and not command_hex and not hotkey_text:
                     continue
                 if not action_name or not command_hex:
                     messagebox.showwarning("Invalid row", "Each non-empty row needs both Action and HEX.")
                     return
+
                 commands[action_name] = command_hex
                 self.config_manager.set_hotkey(device_name, action_name, hotkey_text)
+                toggle_map[action_name] = toggle_with_text
+
+            for action_name, partner in list(toggle_map.items()):
+                if not partner:
+                    continue
+                if partner == action_name:
+                    messagebox.showwarning("Invalid toggle pair", f"{action_name} cannot toggle with itself.")
+                    return
+                if partner not in commands:
+                    messagebox.showwarning("Invalid toggle pair", f"Toggle partner '{partner}' for '{action_name}' was not found in this device.")
+                    return
+
+            for action_name, partner in list(toggle_map.items()):
+                if not partner:
+                    continue
+                existing = toggle_map.get(partner, "")
+                if existing and existing != action_name:
+                    messagebox.showwarning("Invalid toggle pair", f"'{partner}' is already paired with '{existing}'.")
+                    return
+                toggle_map[partner] = action_name
 
             if not commands:
                 messagebox.showwarning("No commands", "Add at least one Action/HEX row.")
@@ -1179,6 +1211,10 @@ class IRRemoteApp:
 
             self.config_manager.set_custom_device(device_name, commands, image_name)
             self.config_manager.set_device_skin(device_name, skin_value)
+
+            for action_name in commands:
+                self.config_manager.set_hotkey_toggle_partner(device_name, action_name, toggle_map.get(action_name, ""))
+
             self.config_manager.set_enabled_devices(sorted(set(self.enabled_devices + [device_name])))
             self.config_manager.save()
 
@@ -1197,7 +1233,7 @@ class IRRemoteApp:
         ttk.Button(controls, text="Add Row", command=lambda: add_row("", "", "")).pack(side="left")
         ttk.Button(controls, text="Save", command=save_commands).pack(side="left", padx=(8, 0))
         ttk.Button(controls, text="Close", command=top.destroy).pack(side="right")
-        ttk.Label(controls, text="Use Learn to capture HEX and Hotkey to assign shortcuts. Use the same hotkey on multiple actions to alternate each key press.", foreground="#4b5563").pack(side="left", padx=(12, 0))
+        ttk.Label(controls, text="Use Learn to capture HEX and Hotkey to assign shortcuts. To alternate two actions on one hotkey, set each row's Toggle With to the other action name.", foreground="#4b5563").pack(side="left", padx=(12, 0))
         self._center_window(top, self.root)
 
     def open_settings_dialog(self):
@@ -1513,8 +1549,9 @@ class IRRemoteApp:
                     pass
             self.global_hotkey_handles.clear()
 
-        global_groups: dict[str, list[tuple[str, str]]] = {}
-        local_groups: dict[str, list[tuple[str, str]]] = {}
+        global_groups: dict[str, list[tuple[int, str, str, str]]] = {}
+        local_groups: dict[str, list[tuple[int, str, str, str]]] = {}
+        action_sequence = 0
 
         for device_name in self.enabled_devices:
             device = self.device_library.get(device_name)
@@ -1527,11 +1564,14 @@ class IRRemoteApp:
 
                 global_sequence = self._normalize_global_hotkey(raw)
                 sequence = self._normalize_sequence(raw)
+                toggle_partner = self.config_manager.get_hotkey_toggle_partner(device_name, action_name)
 
                 if global_sequence:
-                    global_groups.setdefault(global_sequence, []).append((device_name, action_name))
+                    global_groups.setdefault(global_sequence, []).append((action_sequence, device_name, action_name, toggle_partner))
                 if sequence:
-                    local_groups.setdefault(sequence, []).append((device_name, action_name))
+                    local_groups.setdefault(sequence, []).append((action_sequence, device_name, action_name, toggle_partner))
+
+                action_sequence += 1
 
         globally_bound_actions: set[tuple[str, str]] = set()
 
@@ -1539,7 +1579,8 @@ class IRRemoteApp:
             for global_sequence, action_group in global_groups.items():
                 try:
                     group_key = f"global:{global_sequence}"
-                    group_tuple = tuple(action_group)
+                    ordered_actions = self._build_hotkey_dispatch_group(action_group)
+                    group_tuple = tuple(ordered_actions)
                     handle = global_keyboard.add_hotkey(
                         global_sequence,
                         lambda gk=group_key, grp=group_tuple: self.root.after(0, lambda: self._dispatch_hotkey_group(gk, grp)),
@@ -1547,14 +1588,15 @@ class IRRemoteApp:
                         trigger_on_release=False,
                     )
                     self.global_hotkey_handles[("global", global_sequence)] = handle
-                    for action_ref in action_group:
-                        globally_bound_actions.add(action_ref)
+                    for _idx, d, a, _partner in action_group:
+                        globally_bound_actions.add((d, a))
                 except Exception:
                     # Fall back to app-scoped binding for this group.
                     pass
 
         for sequence, action_group in local_groups.items():
-            filtered_group = [action_ref for action_ref in action_group if action_ref not in globally_bound_actions]
+            ordered_actions = self._build_hotkey_dispatch_group(action_group)
+            filtered_group = [action_ref for action_ref in ordered_actions if action_ref not in globally_bound_actions]
             if not filtered_group:
                 continue
 
@@ -1562,6 +1604,30 @@ class IRRemoteApp:
             group_tuple = tuple(filtered_group)
             self.root.bind(sequence, lambda _event, gk=group_key, grp=group_tuple: self._dispatch_hotkey_group(gk, grp))
             self.bindings[("local", sequence)] = sequence
+
+    def _build_hotkey_dispatch_group(self, action_group: list[tuple[int, str, str, str]]) -> list[tuple[str, str]]:
+        ordered = sorted(action_group, key=lambda item: item[0])
+        index_by_action = {(device_name, action_name): idx for idx, (_order, device_name, action_name, _partner) in enumerate(ordered)}
+
+        used_indices: set[int] = set()
+        dispatch: list[tuple[str, str]] = []
+
+        for idx, (_order, device_name, action_name, partner_name) in enumerate(ordered):
+            if idx in used_indices:
+                continue
+
+            partner_idx = index_by_action.get((device_name, partner_name)) if partner_name else None
+            if partner_idx is not None and partner_idx != idx and partner_idx not in used_indices:
+                dispatch.append((device_name, action_name))
+                partner_entry = ordered[partner_idx]
+                dispatch.append((partner_entry[1], partner_entry[2]))
+                used_indices.add(idx)
+                used_indices.add(partner_idx)
+            else:
+                dispatch.append((device_name, action_name))
+                used_indices.add(idx)
+
+        return dispatch
 
     def _dispatch_hotkey_group(self, group_key: str, action_group: tuple[tuple[str, str], ...]):
         if not action_group:

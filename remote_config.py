@@ -71,6 +71,9 @@ class RemoteConfigManager:
     def hotkey_section(self, device_name: str) -> str:
         return f"Hotkeys:{device_name}"
 
+    def hotkey_toggle_section(self, device_name: str) -> str:
+        return f"HotkeyToggle:{device_name}"
+
     def get_hotkey(self, device_name: str, action_name: str) -> str:
         section = self.hotkey_section(device_name)
         if section in self.config:
@@ -86,13 +89,27 @@ class RemoteConfigManager:
             self.config[section] = {}
         self.config[section][action_name] = value
 
+    def get_hotkey_toggle_partner(self, device_name: str, action_name: str) -> str:
+        section = self.hotkey_toggle_section(device_name)
+        return self.config.get(section, action_name, fallback="").strip()
+
+    def set_hotkey_toggle_partner(self, device_name: str, action_name: str, partner_action_name: str):
+        section = self.hotkey_toggle_section(device_name)
+        if section not in self.config:
+            self.config[section] = {}
+        self.config[section][action_name] = (partner_action_name or "").strip()
+
     def clear_hotkeys_for_devices(self, devices: list[str], actions_by_device: dict[str, list[str]]):
         for device_name in devices:
             section = self.hotkey_section(device_name)
+            toggle_section = self.hotkey_toggle_section(device_name)
             if section not in self.config:
                 self.config[section] = {}
+            if toggle_section not in self.config:
+                self.config[toggle_section] = {}
             for action_name in actions_by_device.get(device_name, []):
                 self.config[section][action_name] = ""
+                self.config[toggle_section][action_name] = ""
 
     def overlay_section(self, device_name: str) -> str:
         return f"Overlay:{device_name}"
